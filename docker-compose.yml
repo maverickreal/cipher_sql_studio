@@ -1,0 +1,135 @@
+services:
+  redis:
+    image: redis:7-alpine
+    command: >
+      redis-server
+      --requirepass ${REDIS_PASSWORD}
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD}", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  mongo:
+    image: mongo:8
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_USER}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_PASSWORD}
+      API_GATEWAY_MONGO_ROLE: ${API_GATEWAY_MONGO_ROLE}
+      API_GATEWAY_MONGO_DB: ${API_GATEWAY_MONGO_DB}
+      API_GATEWAY_MONGO_USER: ${API_GATEWAY_MONGO_USER}
+      API_GATEWAY_MONGO_PASSWORD: ${API_GATEWAY_MONGO_PASSWORD}
+
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo-data:/data/db
+      - ./misc/init-db/mongodb:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "mongosh",
+          "--username",
+          "${MONGO_USER}",
+          "--password",
+          "${MONGO_PASSWORD}",
+          "--authenticationDatabase",
+          "admin",
+          "--eval",
+          "db.runCommand('ping').ok",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+      SANDBOX_PG_USER: ${SANDBOX_PG_USER}
+      SANDBOX_PG_PASSWORD: ${SANDBOX_PG_PASSWORD}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./misc/init-db/postgresql:/docker-entrypoint-initdb.d
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  api-gateway:
+    build:
+      # TODO: standardise the project as an image.
+      context: ../cipher_sql_studio_api_gateway
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    environment:
+      CLIENT_URL: "${CLIENT_URL}"
+      SERVER_PORT: "8000"
+      MONGO_URI: "mongodb://${API_GATEWAY_MONGO_USER}:${API_GATEWAY_MONGO_PASSWORD}@mongo:27017/${API_GATEWAY_MONGO_DB}?authSource=${API_GATEWAY_MONGO_DB}"
+      REDIS_URL: "redis://:${REDIS_PASSWORD}@redis:6379"
+      ENV_MODE: "${ENV_MODE}"
+      LOG_LEVEL: "${LOG_LEVEL}"
+      LOG_DIR: "/var/log/cipher_sql_studio"
+      BULLMQ_SQL_QUEUE_NAME: "${BULLMQ_SQL_QUEUE_NAME}"
+      INTERNAL_API_KEY: "${INTERNAL_API_KEY}"
+    develop:
+      watch:
+        - path: ../cipher_sql_studio_api_gateway/src
+          action: rebuild
+          target: /app/dist
+    depends_on:
+      redis:
+        condition: service_healthy
+      mongo:
+        condition: service_healthy
+    restart: unless-stopped
+
+  sandbox-executor:
+    build:
+      context: ../cipher_sql_studio_sandbox
+      dockerfile: Dockerfile
+    environment:
+      REDIS_URL: "redis://:${REDIS_PASSWORD}@redis:6379"
+      PG_HOST: "postgres"
+      PG_PORT: "5432"
+      PG_DATABASE: "${POSTGRES_DB}"
+      PG_USER: "${SANDBOX_PG_USER}"
+      PG_PASSWORD: "${SANDBOX_PG_PASSWORD}"
+      ADMIN_PG_USER: "${POSTGRES_USER}"
+      ADMIN_PG_PASSWORD: "${POSTGRES_PASSWORD}"
+      ENV_MODE: "${ENV_MODE}"
+      LOG_LEVEL: "${LOG_LEVEL}"
+      LOG_DIR: "/var/log/cipher_sql_studio"
+      BULLMQ_SQL_QUEUE_NAME: "${BULLMQ_SQL_QUEUE_NAME}"
+      INTERNAL_API_KEY: "${INTERNAL_API_KEY}"
+      # TODO: would use https instead.
+      API_GATEWAY_URL: "http://api-gateway:8000"
+    develop:
+      watch:
+        - path: ../cipher_sql_studio_sandbox/src
+          action: rebuild
+          target: /app/dist
+    depends_on:
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+    mem_limit: 512m
+    cpus: 1.0
+
+volumes:
+  mongo-data:
+  postgres-data:
+  redis-data:
