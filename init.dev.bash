@@ -6,7 +6,12 @@
 
 set -e
 
-# Remove containers, volumes, and networks and rebuild images.
+echo "Installing dependencies for api-gateway and sandbox."
+cd ../cipher_sql_studio_api_gateway && npm ci
+cd ../cipher_sql_studio_sandbox && npm ci
+cd ../cipher_sql_studio
+
+# Cleanup containers, volumes, and networks and rebuild images.
 docker stop $(docker ps -q) 2>/dev/null || true && \
 docker rm -f $(docker ps -aq) 2>/dev/null || true && \
 docker volume rm -f $(docker volume ls -q) 2>/dev/null || true && \
