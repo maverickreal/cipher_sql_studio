@@ -145,3 +145,12 @@ E2E_TEST=true MONGO_HOST=<host> REDIS_HOST=<host> npm run test -- assignment_exe
 See the test file in the API Gateway repository for configurable values.
 
 NOTE: For unit and integration tests, just run `npm run test` in eiter the API gateway or sandbox repo.
+
+## TODOs:
+* Add comments.
+* Add authentication and authorisation.
+* Enable load balancing, Nginx,di container, db replication/sharding, distributed worker, etc.
+* Integrate AI (API or local) for certain features.
+* Meditate on how to eliminate/minimise redundancy of relations due to schemas.
+* Periodically scheduled cleanups.
+* User SQL execution state persistence.
